@@ -132,7 +132,8 @@ const parseProxies = (raw: string): ProxyNode[] => {
   // Enhanced parsing to handle more formats
   // It will look for IP:PORT patterns even if surrounded by other text
   const ipPortRegex = /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):(\d{1,5})/g;
-  const matches = [...raw.matchAll(ipPortRegex)];
+  // Convert iterator to array properly for older targets if needed, but Array.from or spread is standard
+  const matches = Array.from(raw.matchAll(ipPortRegex));
   
   return matches.map((match, idx) => {
     const ip = match[1];
@@ -417,21 +418,33 @@ export function ProxyTester() {
      setIsUrlLoading(true);
      addLog(`Fetching list from URL: ${urlInput}...`);
      
-     try {
-        // Use a public CORS proxy to fetch the data
-        // 'corsproxy.io' is a common one, but let's try 'api.allorigins.win' which is also reliable for text
-        const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(urlInput)}`;
-        
-        const response = await fetch(proxyUrl);
-        
-        if (!response.ok) {
-            throw new Error(`HTTP error! Status: ${response.status}`);
+     const proxiesList = [
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(urlInput)}`,
+        `https://corsproxy.io/?${encodeURIComponent(urlInput)}`,
+        `https://thingproxy.freeboard.io/fetch/${urlInput}`
+     ];
+     
+     let text = '';
+     let success = false;
+
+     for (const proxyUrl of proxiesList) {
+        try {
+            const response = await fetch(proxyUrl);
+            if (response.ok) {
+                text = await response.text();
+                if (text && text.trim().length > 0) {
+                    success = true;
+                    break; // Found working proxy
+                }
+            }
+        } catch (e) {
+            console.warn(`Failed to fetch via ${proxyUrl}`, e);
         }
-        
-        const text = await response.text();
-        
-        if (!text || text.trim().length === 0) {
-             throw new Error('Empty response from URL');
+     }
+     
+     try {
+        if (!success || !text) {
+             throw new Error('All CORS proxies failed or returned empty content.');
         }
 
         const fetchedProxies = parseProxies(text);
@@ -442,15 +455,15 @@ export function ProxyTester() {
 
         setProxies(prev => {
             const uniqueNew = deduplicateProxies(prev, fetchedProxies);
-            addLog(`Successfully loaded ${uniqueNew.length} unique targets from URL (filtered ${fetchedProxies.length - uniqueNew.length} duplicates).`);
+            addLog(`Successfully loaded ${uniqueNew.length} unique targets (filtered ${fetchedProxies.length - uniqueNew.length} duplicates).`);
             return [...uniqueNew, ...prev];
         });
         
         setUrlInput('');
-        setDialogOpen(false); // Close dialog on success
+        setDialogOpen(false);
      } catch (error) {
          console.error("URL fetch error:", error);
-         addLog(`Error fetching URL: ${error instanceof Error ? error.message : 'Unknown error'}. Check CORS or URL validity.`);
+         addLog(`Error fetching URL: ${error instanceof Error ? error.message : 'Unknown error'}. Try a different URL.`);
      } finally {
          setIsUrlLoading(false);
      }
@@ -593,7 +606,7 @@ export function ProxyTester() {
                              />
                            </div>
                            <p className="text-[10px] text-muted-foreground">
-                             * System uses CORS proxy to fetch remote lists.
+                             * System attempts multiple CORS gateways automatically.
                            </p>
                          </div>
                          <Button 
