@@ -17,7 +17,8 @@ import {
   ArrowRight,
   Gauge,
   Settings,
-  StopCircle
+  StopCircle,
+  Link
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,6 +26,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Slider } from "@/components/ui/slider";
@@ -170,9 +172,11 @@ export function ProxyTester() {
   const [proxies, setProxies] = useState<ProxyNode[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const [isSpeedTesting, setIsSpeedTesting] = useState(false);
+  const [isUrlLoading, setIsUrlLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [logs, setLogs] = useState<string[]>([]);
   const [customList, setCustomList] = useState('');
+  const [urlInput, setUrlInput] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("latency");
   const [testMode, setTestMode] = useState<'CLIENT' | 'SERVER'>('CLIENT');
@@ -383,19 +387,60 @@ export function ProxyTester() {
     }
   };
 
+  const deduplicateProxies = (currentProxies: ProxyNode[], newProxies: ProxyNode[]) => {
+      const existingKeys = new Set(currentProxies.map(p => `${p.ip}:${p.port}`));
+      return newProxies.filter(p => !existingKeys.has(`${p.ip}:${p.port}`));
+  };
+
   const handleAddProxies = () => {
     if (!customList.trim()) return;
     const newProxies = parseProxies(customList);
-    setProxies(prev => [...newProxies, ...prev]); 
+    
+    setProxies(prev => {
+        const uniqueNew = deduplicateProxies(prev, newProxies);
+        addLog(`Injected ${uniqueNew.length} unique targets (filtered ${newProxies.length - uniqueNew.length} duplicates).`);
+        return [...uniqueNew, ...prev];
+    });
+    
     setCustomList('');
     setDialogOpen(false);
-    addLog(`Injected ${newProxies.length} new targets.`);
+  };
+
+  const loadFromUrl = async () => {
+     if (!urlInput.trim()) return;
+     setIsUrlLoading(true);
+     addLog(`Fetching list from URL: ${urlInput}...`);
+     
+     try {
+        // In a real app this would be a fetch call.
+        // Since this is a client-side mockup, we'll simulate a fetch delay and return mock data + duplicates
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        // Simulating fetched content (using one of the extra lists for demo)
+        const mockContent = EXTRA_LIST_1 + "\n" + "192.168.1.101:1080"; // Adding a duplicate for testing
+        const fetchedProxies = parseProxies(mockContent);
+        
+        setProxies(prev => {
+            const uniqueNew = deduplicateProxies(prev, fetchedProxies);
+            addLog(`Successfully loaded ${uniqueNew.length} unique targets from URL (filtered ${fetchedProxies.length - uniqueNew.length} duplicates).`);
+            return [...uniqueNew, ...prev];
+        });
+        
+        setUrlInput('');
+     } catch (error) {
+         addLog('Error fetching from URL. Check console or CORS settings.');
+     } finally {
+         setIsUrlLoading(false);
+     }
   };
 
   const loadPreset = (preset: string, name: string) => {
      const newProxies = parseProxies(preset);
-     setProxies(prev => [...newProxies, ...prev]);
-     addLog(`Loaded preset: ${name}`);
+     setProxies(prev => {
+        const uniqueNew = deduplicateProxies(prev, newProxies);
+        addLog(`Loaded preset: ${name} (${uniqueNew.length} new, ${newProxies.length - uniqueNew.length} dupes skipped)`);
+        return [...uniqueNew, ...prev];
+     });
   };
 
   const transferOnlineToSpeed = () => {
@@ -485,25 +530,60 @@ export function ProxyTester() {
                       <Plus className="mr-2 h-4 w-4" /> ADD TARGETS
                     </Button>
                   </DialogTrigger>
-                  <DialogContent className="bg-card border-primary/20 text-foreground">
+                  <DialogContent className="bg-card border-primary/20 text-foreground max-w-md">
                     <DialogHeader>
                       <DialogTitle className="font-display text-primary">INJECT TARGETS</DialogTitle>
                     </DialogHeader>
-                    <div className="grid grid-cols-2 gap-2 mb-2">
-                        <Button variant="secondary" size="sm" onClick={() => loadPreset(EXTRA_LIST_1, "US Nodes")} className="text-xs">
-                           <Globe className="w-3 h-3 mr-1"/> US NODES
-                        </Button>
-                        <Button variant="secondary" size="sm" onClick={() => loadPreset(EXTRA_LIST_2, "EU Nodes")} className="text-xs">
-                           <Server className="w-3 h-3 mr-1"/> EU NODES
-                        </Button>
-                    </div>
-                    <Textarea 
-                      placeholder="Paste IP:PORT list here..." 
-                      className="min-h-[200px] font-mono bg-black/50 border-primary/20 text-xs"
-                      value={customList}
-                      onChange={(e) => setCustomList(e.target.value)}
-                    />
-                    <Button onClick={handleAddProxies} className="bg-primary text-black hover:bg-primary/80">INJECT DATA</Button>
+                    
+                    <Tabs defaultValue="text" className="w-full">
+                      <TabsList className="grid w-full grid-cols-2 mb-4">
+                        <TabsTrigger value="text">TEXT INPUT</TabsTrigger>
+                        <TabsTrigger value="url">URL IMPORT</TabsTrigger>
+                      </TabsList>
+                      
+                      <TabsContent value="text" className="space-y-4">
+                        <div className="grid grid-cols-2 gap-2">
+                            <Button variant="secondary" size="sm" onClick={() => loadPreset(EXTRA_LIST_1, "US Nodes")} className="text-xs">
+                               <Globe className="w-3 h-3 mr-1"/> US NODES
+                            </Button>
+                            <Button variant="secondary" size="sm" onClick={() => loadPreset(EXTRA_LIST_2, "EU Nodes")} className="text-xs">
+                               <Server className="w-3 h-3 mr-1"/> EU NODES
+                            </Button>
+                        </div>
+                        <Textarea 
+                          placeholder="Paste IP:PORT list here..." 
+                          className="min-h-[200px] font-mono bg-black/50 border-primary/20 text-xs"
+                          value={customList}
+                          onChange={(e) => setCustomList(e.target.value)}
+                        />
+                        <Button onClick={handleAddProxies} className="w-full bg-primary text-black hover:bg-primary/80">INJECT DATA</Button>
+                      </TabsContent>
+                      
+                      <TabsContent value="url" className="space-y-4">
+                         <div className="space-y-2">
+                           <Label className="text-xs text-muted-foreground">REMOTE LIST URL (TXT/RAW)</Label>
+                           <div className="flex gap-2">
+                             <Input 
+                               placeholder="https://example.com/proxies.txt" 
+                               className="bg-black/50 border-primary/20 font-mono text-xs"
+                               value={urlInput}
+                               onChange={(e) => setUrlInput(e.target.value)}
+                             />
+                           </div>
+                           <p className="text-[10px] text-muted-foreground">
+                             * System will automatically filter duplicates based on IP:PORT pair.
+                           </p>
+                         </div>
+                         <Button 
+                           onClick={loadFromUrl} 
+                           disabled={isUrlLoading || !urlInput}
+                           className="w-full bg-secondary text-black hover:bg-secondary/80"
+                         >
+                           {isUrlLoading ? <RotateCw className="mr-2 h-4 w-4 animate-spin" /> : <Link className="mr-2 h-4 w-4" />}
+                           {isUrlLoading ? 'FETCHING...' : 'IMPORT FROM URL'}
+                         </Button>
+                      </TabsContent>
+                    </Tabs>
                   </DialogContent>
                 </Dialog>
                 
