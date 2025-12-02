@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, memo } from 'react';
+import React, { useState, useEffect, useRef, memo, useCallback } from 'react';
 import { MOCK_PROXIES_RAW } from '@/lib/mock-proxies';
 import { 
   Activity, 
@@ -16,7 +16,8 @@ import {
   Server,
   ArrowRight,
   Gauge,
-  Settings
+  Settings,
+  StopCircle
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -177,11 +178,23 @@ export function ProxyTester() {
   const [testMode, setTestMode] = useState<'CLIENT' | 'SERVER'>('CLIENT');
   const [concurrency, setConcurrency] = useState([5]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  
+  // Safety refs for memory management
+  const isMounted = useRef(true);
+  const abortController = useRef<AbortController | null>(null);
 
   useEffect(() => {
+    isMounted.current = true;
     // Initialize with mock data
     setProxies(parseProxies(MOCK_PROXIES_RAW));
     addLog('System initialized. Loaded default proxy list.');
+
+    return () => {
+      isMounted.current = false;
+      if (abortController.current) {
+        abortController.current.abort();
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -190,12 +203,27 @@ export function ProxyTester() {
     }
   }, [logs]);
 
-  const addLog = (msg: string) => {
+  const addLog = useCallback((msg: string) => {
     setLogs(prev => [...prev.slice(-20), `[${new Date().toLocaleTimeString()}] ${testMode}::${msg}`]);
-  };
+  }, [testMode]);
+
+  const stopScan = useCallback(() => {
+    if (abortController.current) {
+      abortController.current.abort();
+      abortController.current = null;
+      addLog('Scan aborted by user.');
+      setIsScanning(false);
+      setIsSpeedTesting(false);
+    }
+  }, [addLog]);
 
   const startLatencyScan = async () => {
     if (isScanning) return;
+    
+    // Setup cancellation
+    abortController.current = new AbortController();
+    const signal = abortController.current.signal;
+
     setIsScanning(true);
     setProgress(0);
     addLog(`Initiating LATENCY scan on ${proxies.length} targets (Threads: ${concurrency[0]})...`);
@@ -206,38 +234,62 @@ export function ProxyTester() {
     let completed = 0;
     const batchSize = concurrency[0];
     
-    for (let i = 0; i < proxies.length; i += batchSize) {
-      const chunk = proxies.slice(i, i + batchSize);
-      
-      await Promise.all(chunk.map(async (proxy) => {
-        const delay = Math.random() * 800 + 100; 
-        await new Promise(resolve => setTimeout(resolve, delay));
+    try {
+      for (let i = 0; i < proxies.length; i += batchSize) {
+        if (signal.aborted || !isMounted.current) break;
 
-        const rand = Math.random();
-        let status: ProxyNode['status'] = 'ONLINE';
-        let latency: number | null = Math.floor(Math.random() * 400) + 50;
-
-        if (rand > 0.7) {
-          status = 'TIMEOUT';
-          latency = 2000;
-        } else if (rand > 0.6) {
-          status = 'ERROR';
-          latency = null;
-        } else if (rand < 0.1) {
-           latency = Math.floor(Math.random() * 50) + 10;
-        }
-
-        setProxies(prev => prev.map(p => 
-          p.id === proxy.id ? { ...p, status, latency } : p
-        ));
+        const chunk = proxies.slice(i, i + batchSize);
         
-        completed++;
-        setProgress((completed / total) * 100);
-      }));
-    }
+        const chunkResults = await Promise.all(chunk.map(async (proxy) => {
+          if (signal.aborted) return null;
 
-    setIsScanning(false);
-    addLog('Latency scan complete.');
+          const delay = Math.random() * 800 + 100; 
+          await new Promise(resolve => setTimeout(resolve, delay));
+
+          if (signal.aborted) return null;
+
+          const rand = Math.random();
+          let status: ProxyNode['status'] = 'ONLINE';
+          let latency: number | null = Math.floor(Math.random() * 400) + 50;
+
+          if (rand > 0.7) {
+            status = 'TIMEOUT';
+            latency = 2000;
+          } else if (rand > 0.6) {
+            status = 'ERROR';
+            latency = null;
+          } else if (rand < 0.1) {
+             latency = Math.floor(Math.random() * 50) + 10;
+          }
+          
+          return { id: proxy.id, status, latency };
+        }));
+
+        if (!isMounted.current || signal.aborted) break;
+
+        // Batch update state to prevent excessive re-renders
+        setProxies(prev => {
+           const updates = new Map(chunkResults.filter(Boolean).map(r => [r!.id, r]));
+           return prev.map(p => {
+             const update = updates.get(p.id);
+             return update ? { ...p, status: update.status, latency: update.latency } : p;
+           });
+        });
+        
+        completed += chunk.length;
+        setProgress(Math.min(100, (completed / total) * 100));
+      }
+
+      if (isMounted.current && !signal.aborted) {
+        setIsScanning(false);
+        addLog('Latency scan complete.');
+      }
+    } catch (error) {
+      console.error("Scan error", error);
+      if (isMounted.current) setIsScanning(false);
+    } finally {
+      abortController.current = null;
+    }
   };
 
   const startSpeedTest = async () => {
@@ -248,6 +300,11 @@ export function ProxyTester() {
     }
 
     if (isSpeedTesting) return;
+
+    // Setup cancellation
+    abortController.current = new AbortController();
+    const signal = abortController.current.signal;
+
     setIsSpeedTesting(true);
     addLog(`Starting SPEED TEST on ${onlineProxies.length} targets (OVH 100MB Proof)...`);
 
@@ -259,48 +316,71 @@ export function ProxyTester() {
 
     const batchSize = Math.max(1, Math.floor(concurrency[0] / 2)); // Speed tests are heavier
     
-    for (let i = 0; i < onlineProxies.length; i += batchSize) {
-      const chunk = onlineProxies.slice(i, i + batchSize);
-      
-      await Promise.all(chunk.map(async (proxy) => {
-        // Set to testing
-        setProxies(prev => prev.map(p => 
-          p.id === proxy.id ? { ...p, speedTest: { ...p.speedTest!, status: 'TESTING' } } : p
-        ));
+    try {
+      for (let i = 0; i < onlineProxies.length; i += batchSize) {
+        if (signal.aborted || !isMounted.current) break;
 
-        // Simulate download progress
-        let progress = 0;
-        const targetSpeed = Math.random() * 15 + 0.5; // Random speed 0.5 - 15 MB/s
+        const chunk = onlineProxies.slice(i, i + batchSize);
         
-        while (progress < 100) {
-          await new Promise(r => setTimeout(r, 200));
-          // Larger chunks for less re-renders
-          progress += Math.random() * 15 + 5; 
-          if (progress > 100) progress = 100;
+        // Set chunk to TESTING state
+        setProxies(prev => {
+           const chunkIds = new Set(chunk.map(c => c.id));
+           return prev.map(p => 
+             chunkIds.has(p.id) ? { ...p, speedTest: { ...p.speedTest!, status: 'TESTING' } } : p
+           );
+        });
+        
+        await Promise.all(chunk.map(async (proxy) => {
+          if (signal.aborted) return;
+
+          // Simulate download progress
+          let progress = 0;
+          const targetSpeed = Math.random() * 15 + 0.5; // Random speed 0.5 - 15 MB/s
           
-          setProxies(prev => prev.map(p => 
-            p.id === proxy.id ? { 
-              ...p, 
-              speedTest: { 
-                ...p.speedTest!, 
-                progress, 
-                downloadSpeed: targetSpeed + (Math.random() * 2 - 1) // Jitter
-              } 
-            } : p
-          ));
-        }
+          while (progress < 100) {
+             if (signal.aborted || !isMounted.current) break;
 
-        setProxies(prev => prev.map(p => 
-          p.id === proxy.id ? { 
-            ...p, 
-            speedTest: { ...p.speedTest!, status: 'COMPLETED', progress: 100, downloadSpeed: targetSpeed } 
-          } : p
-        ));
-      }));
+            await new Promise(r => setTimeout(r, 200));
+            // Larger chunks for less re-renders
+            progress += Math.random() * 15 + 5; 
+            if (progress > 100) progress = 100;
+            
+            // Update progress individually (it's okay for smoothness here, but could be optimized)
+            if (isMounted.current && !signal.aborted) {
+               setProxies(prev => prev.map(p => 
+                 p.id === proxy.id ? { 
+                   ...p, 
+                   speedTest: { 
+                     ...p.speedTest!, 
+                     progress, 
+                     downloadSpeed: targetSpeed + (Math.random() * 2 - 1) // Jitter
+                   } 
+                 } : p
+               ));
+            }
+          }
+
+          if (isMounted.current && !signal.aborted) {
+             setProxies(prev => prev.map(p => 
+               p.id === proxy.id ? { 
+                 ...p, 
+                 speedTest: { ...p.speedTest!, status: 'COMPLETED', progress: 100, downloadSpeed: targetSpeed } 
+               } : p
+             ));
+          }
+        }));
+      }
+
+      if (isMounted.current && !signal.aborted) {
+        setIsSpeedTesting(false);
+        addLog('Speed test complete.');
+      }
+    } catch (error) {
+      console.error("Speed test error", error);
+      if (isMounted.current) setIsSpeedTesting(false);
+    } finally {
+      abortController.current = null;
     }
-
-    setIsSpeedTesting(false);
-    addLog('Speed test complete.');
   };
 
   const handleAddProxies = () => {
@@ -379,19 +459,25 @@ export function ProxyTester() {
               
               {/* Main Actions */}
               <div className="flex flex-col gap-2">
-                 <Button 
-                  size="lg" 
-                  onClick={activeTab === 'latency' ? startLatencyScan : startSpeedTest} 
-                  disabled={isScanning || isSpeedTesting || proxies.length === 0}
-                  className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-bold tracking-wider shadow-[0_0_15px_rgba(0,255,65,0.3)] transition-all hover:shadow-[0_0_25px_rgba(0,255,65,0.5)]"
-                >
-                  {(isScanning || isSpeedTesting) ? (
-                    <RotateCw className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    activeTab === 'latency' ? <Play className="mr-2 h-4 w-4" /> : <Gauge className="mr-2 h-4 w-4" />
-                  )}
-                  {(isScanning || isSpeedTesting) ? 'PROCESSING...' : (activeTab === 'latency' ? 'START LATENCY SCAN' : 'START SPEED TEST')}
-                </Button>
+                 {(isScanning || isSpeedTesting) ? (
+                    <Button 
+                      size="lg" 
+                      onClick={stopScan}
+                      className="w-full bg-destructive text-destructive-foreground hover:bg-destructive/90 font-bold tracking-wider shadow-[0_0_15px_rgba(255,0,0,0.3)]"
+                    >
+                      <StopCircle className="mr-2 h-4 w-4 animate-pulse" /> ABORT OPERATION
+                    </Button>
+                 ) : (
+                    <Button 
+                      size="lg" 
+                      onClick={activeTab === 'latency' ? startLatencyScan : startSpeedTest} 
+                      disabled={proxies.length === 0}
+                      className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-bold tracking-wider shadow-[0_0_15px_rgba(0,255,65,0.3)] transition-all hover:shadow-[0_0_25px_rgba(0,255,65,0.5)]"
+                    >
+                      {activeTab === 'latency' ? <Play className="mr-2 h-4 w-4" /> : <Gauge className="mr-2 h-4 w-4" />}
+                      {activeTab === 'latency' ? 'START LATENCY SCAN' : 'START SPEED TEST'}
+                    </Button>
+                 )}
 
                 <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
                   <DialogTrigger asChild>
