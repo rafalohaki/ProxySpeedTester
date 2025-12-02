@@ -129,8 +129,14 @@ const SpeedRow = memo(({ proxy }: { proxy: ProxyNode }) => (
 ));
 
 const parseProxies = (raw: string): ProxyNode[] => {
-  return raw.trim().split('\n').filter(line => line.trim()).map((line, idx) => {
-    const [ip, port] = line.trim().split(':');
+  // Enhanced parsing to handle more formats
+  // It will look for IP:PORT patterns even if surrounded by other text
+  const ipPortRegex = /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):(\d{1,5})/g;
+  const matches = [...raw.matchAll(ipPortRegex)];
+  
+  return matches.map((match, idx) => {
+    const ip = match[1];
+    const port = match[2];
     return {
       id: `proxy-${idx}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       ip,
@@ -412,14 +418,28 @@ export function ProxyTester() {
      addLog(`Fetching list from URL: ${urlInput}...`);
      
      try {
-        // In a real app this would be a fetch call.
-        // Since this is a client-side mockup, we'll simulate a fetch delay and return mock data + duplicates
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        // Use a public CORS proxy to fetch the data
+        // 'corsproxy.io' is a common one, but let's try 'api.allorigins.win' which is also reliable for text
+        const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(urlInput)}`;
         
-        // Simulating fetched content (using one of the extra lists for demo)
-        const mockContent = EXTRA_LIST_1 + "\n" + "192.168.1.101:1080"; // Adding a duplicate for testing
-        const fetchedProxies = parseProxies(mockContent);
+        const response = await fetch(proxyUrl);
         
+        if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+        
+        const text = await response.text();
+        
+        if (!text || text.trim().length === 0) {
+             throw new Error('Empty response from URL');
+        }
+
+        const fetchedProxies = parseProxies(text);
+        
+        if (fetchedProxies.length === 0) {
+             throw new Error('No valid IP:PORT patterns found in the URL content');
+        }
+
         setProxies(prev => {
             const uniqueNew = deduplicateProxies(prev, fetchedProxies);
             addLog(`Successfully loaded ${uniqueNew.length} unique targets from URL (filtered ${fetchedProxies.length - uniqueNew.length} duplicates).`);
@@ -427,8 +447,10 @@ export function ProxyTester() {
         });
         
         setUrlInput('');
+        setDialogOpen(false); // Close dialog on success
      } catch (error) {
-         addLog('Error fetching from URL. Check console or CORS settings.');
+         console.error("URL fetch error:", error);
+         addLog(`Error fetching URL: ${error instanceof Error ? error.message : 'Unknown error'}. Check CORS or URL validity.`);
      } finally {
          setIsUrlLoading(false);
      }
@@ -571,7 +593,7 @@ export function ProxyTester() {
                              />
                            </div>
                            <p className="text-[10px] text-muted-foreground">
-                             * System will automatically filter duplicates based on IP:PORT pair.
+                             * System uses CORS proxy to fetch remote lists.
                            </p>
                          </div>
                          <Button 
