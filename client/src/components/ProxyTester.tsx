@@ -82,6 +82,7 @@ const LatencyRow = memo(({ proxy }: { proxy: ProxyNode }) => (
     <div className="col-span-2 text-xs text-muted-foreground truncate hidden md:block opacity-30">#{proxy.id.split('-')[1]}</div>
   </div>
 ));
+LatencyRow.displayName = 'LatencyRow';
 
 const SpeedRow = memo(({ proxy }: { proxy: ProxyNode }) => (
   <div className="grid grid-cols-12 gap-4 p-4 border-b border-white/5 text-sm items-center hover:bg-white/5 transition-colors">
@@ -127,6 +128,7 @@ const SpeedRow = memo(({ proxy }: { proxy: ProxyNode }) => (
     </div>
   </div>
 ));
+SpeedRow.displayName = 'SpeedRow';
 
 const parseProxies = (raw: string): ProxyNode[] => {
   // Enhanced parsing to handle more formats
@@ -139,7 +141,7 @@ const parseProxies = (raw: string): ProxyNode[] => {
     const ip = match[1];
     const port = match[2];
     return {
-      id: `proxy-${idx}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      id: `proxy-${idx}-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
       ip,
       port: parseInt(port) || 1080,
       status: 'PENDING',
@@ -228,28 +230,35 @@ export function ProxyTester() {
     }
   }, [addLog]);
 
-  const startLatencyScan = async () => {
+  const startLatencyScan = useCallback(async () => {
     if (isScanning) return;
     
     // Setup cancellation
     abortController.current = new AbortController();
     const signal = abortController.current.signal;
 
+    // Get current proxies snapshot
+    const currentProxies = [...proxies];
+    if (currentProxies.length === 0) {
+      addLog('No proxies to scan.');
+      return;
+    }
+
     setIsScanning(true);
     setProgress(0);
-    addLog(`Initiating LATENCY scan on ${proxies.length} targets (Threads: ${concurrency[0]})...`);
+    addLog(`Initiating LATENCY scan on ${currentProxies.length} targets (Threads: ${concurrency[0]})...`);
 
     setProxies(prev => prev.map(p => ({ ...p, status: 'PENDING', latency: null })));
 
-    const total = proxies.length;
+    const total = currentProxies.length;
     let completed = 0;
     const batchSize = concurrency[0];
     
     try {
-      for (let i = 0; i < proxies.length; i += batchSize) {
+      for (let i = 0; i < currentProxies.length; i += batchSize) {
         if (signal.aborted || !isMounted.current) break;
 
-        const chunk = proxies.slice(i, i + batchSize);
+        const chunk = currentProxies.slice(i, i + batchSize);
         
         const chunkResults = await Promise.all(chunk.map(async (proxy) => {
           if (signal.aborted) return null;
@@ -301,9 +310,9 @@ export function ProxyTester() {
     } finally {
       abortController.current = null;
     }
-  };
+  }, [proxies, isScanning, concurrency, addLog]);
 
-  const startSpeedTest = async () => {
+  const startSpeedTest = useCallback(async () => {
     const onlineProxies = proxies.filter(p => p.status === 'ONLINE');
     if (onlineProxies.length === 0) {
       addLog('No ONLINE proxies to test. Run latency scan first.');
@@ -392,7 +401,7 @@ export function ProxyTester() {
     } finally {
       abortController.current = null;
     }
-  };
+  }, [proxies, isSpeedTesting, concurrency, addLog]);
 
   const deduplicateProxies = (currentProxies: ProxyNode[], newProxies: ProxyNode[]) => {
       const existingKeys = new Set(currentProxies.map(p => `${p.ip}:${p.port}`));

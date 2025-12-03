@@ -2,6 +2,11 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { existsSync } from "fs";
+import { resolve } from "path";
+
+// Auto-detect production mode: if dist/public exists, serve static files
+const isProduction = existsSync(resolve(import.meta.dirname, "../dist/public"));
 
 const app = express();
 const httpServer = createServer(app);
@@ -70,12 +75,12 @@ app.use((req, res, next) => {
     throw err;
   });
 
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
-  if (process.env.NODE_ENV === "production") {
+  // Setup vite in dev, static files in production
+  if (isProduction) {
+    log("Running in PRODUCTION mode (serving static files)");
     serveStatic(app);
   } else {
+    log("Running in DEVELOPMENT mode (Vite HMR)");
     const { setupVite } = await import("./vite");
     await setupVite(httpServer, app);
   }
@@ -85,14 +90,7 @@ app.use((req, res, next) => {
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || "5000", 10);
-  httpServer.listen(
-    {
-      port,
-      host: "0.0.0.0",
-      reusePort: true,
-    },
-    () => {
-      log(`serving on port ${port}`);
-    },
-  );
+  httpServer.listen(port, "0.0.0.0", () => {
+    log(`serving on port ${port}`);
+  });
 })();

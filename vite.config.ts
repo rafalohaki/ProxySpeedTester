@@ -11,8 +11,8 @@ export default defineConfig({
     runtimeErrorOverlay(),
     tailwindcss(),
     metaImagesPlugin(),
-    ...(process.env.NODE_ENV !== "production" &&
-    process.env.REPL_ID !== undefined
+    // Replit-specific plugins (only load on Replit)
+    ...(process.env.REPL_ID
       ? [
           await import("@replit/vite-plugin-cartographer").then((m) =>
             m.cartographer(),
