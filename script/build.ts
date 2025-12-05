@@ -49,22 +49,24 @@ async function buildAll() {
   await esbuild({
     entryPoints: ["server/index.ts"],
     platform: "node",
+    target: "node20",
     bundle: true,
     format: "esm",
     outfile: "dist/index.mjs",
     banner: {
       js: `
+import { createRequire as __createRequire } from 'module';
 import { fileURLToPath as __fileURLToPath } from 'url';
-import { dirname as __dirname_fn } from 'path';
+import { dirname as __pathDirname } from 'path';
+const require = __createRequire(import.meta.url);
 const __filename = __fileURLToPath(import.meta.url);
-const __dirname = __dirname_fn(__filename);
+const __dirname = __pathDirname(__filename);
 `.trim(),
     },
     define: {
       "process.env.NODE_ENV": '"production"',
-      "import.meta.dirname": "__dirname",
     },
-    minify: false,
+    minify: true,
     external: externals,
     logLevel: "info",
   });
