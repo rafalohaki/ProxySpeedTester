@@ -8,7 +8,8 @@
     "build": "tsx script/build.ts",
     "start": "node dist/index.mjs",
     "check": "tsc",
-    "db:push": "drizzle-kit push"
+    "db:push": "drizzle-kit push",
+    "preview": "npm run start"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
