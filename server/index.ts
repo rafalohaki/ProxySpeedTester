@@ -1,13 +1,8 @@
 import { existsSync } from "fs";
-import { resolve, dirname } from "path";
-import { fileURLToPath } from "url";
-
-// Get __dirname equivalent for ESM
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+import { resolve } from "path";
 
 // Auto-detect production mode: check NODE_ENV
-const isProduction = process.env.NODE_ENV === "production";
+const isProduction = Bun.env.NODE_ENV === "production";
 
 export function log(message: string, source = "bun") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
@@ -22,13 +17,14 @@ export function log(message: string, source = "bun") {
 
 // ALWAYS serve the app on the port specified in the environment variable PORT
 // Default to 5000 if not specified.
-const port = parseInt(process.env.PORT || "5000", 10);
+const port = parseInt(Bun.env.PORT || "5000", 10);
 
 if (isProduction) {
   // Production mode: Native Bun static file server
   log("Running in PRODUCTION mode (serving static files)");
 
-  const distPath = resolve(__dirname, "../dist/public");
+  // Use import.meta.dir for current directory
+  const distPath = resolve(import.meta.dir, "../dist/public");
 
   if (!existsSync(distPath)) {
     throw new Error(
