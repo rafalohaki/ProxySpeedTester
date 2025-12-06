@@ -1,40 +1,39 @@
-@import "tailwindcss";
-@import "tw-animate-css";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-@theme inline {
-  --color-background: hsl(0 0% 4%);
-  --color-foreground: hsl(0 0% 95%);
-  
-  --color-card: hsl(0 0% 7%);
-  --color-card-foreground: hsl(0 0% 95%);
-  
-  --color-popover: hsl(0 0% 7%);
-  --color-popover-foreground: hsl(0 0% 95%);
-  
-  --color-primary: hsl(130 100% 50%);
-  --color-primary-foreground: hsl(0 0% 0%);
-  
-  --color-secondary: hsl(180 100% 50%);
-  --color-secondary-foreground: hsl(0 0% 0%);
-  
-  --color-muted: hsl(0 0% 15%);
-  --color-muted-foreground: hsl(0 0% 60%);
-  
-  --color-accent: hsl(0 0% 15%);
-  --color-accent-foreground: hsl(130 100% 50%);
-  
-  --color-destructive: hsl(350 100% 50%);
-  --color-destructive-foreground: hsl(0 0% 100%);
-  
-  --color-border: hsl(0 0% 20%);
-  --color-input: hsl(0 0% 20%);
-  --color-ring: hsl(130 100% 50%);
-  
-  --font-sans: 'Inter', sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
-  --font-display: 'Orbitron', sans-serif;
-  
-  --radius: 0px; 
+@layer base {
+  :root {
+    --background: 0 0% 4%;
+    --foreground: 0 0% 95%;
+
+    --card: 0 0% 7%;
+    --card-foreground: 0 0% 95%;
+
+    --popover: 0 0% 7%;
+    --popover-foreground: 0 0% 95%;
+
+    --primary: 130 100% 50%;
+    --primary-foreground: 0 0% 0%;
+
+    --secondary: 180 100% 50%;
+    --secondary-foreground: 0 0% 0%;
+
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 60%;
+
+    --accent: 0 0% 15%;
+    --accent-foreground: 130 100% 50%;
+
+    --destructive: 350 100% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 0 0% 20%;
+    --input: 0 0% 20%;
+    --ring: 130 100% 50%;
+
+    --radius: 0px;
+  }
 }
 
 @layer base {
@@ -51,11 +50,11 @@
 }
 
 .neon-text {
-  text-shadow: 0 0 5px theme('colors.primary'), 0 0 10px theme('colors.primary');
+  text-shadow: 0 0 5px hsl(var(--primary)), 0 0 10px hsl(var(--primary));
 }
 
 .neon-border {
-  box-shadow: 0 0 5px theme('colors.primary'), inset 0 0 5px theme('colors.primary');
+  box-shadow: 0 0 5px hsl(var(--primary)), inset 0 0 5px hsl(var(--primary));
 }
 
 .scan-line {
@@ -64,8 +63,8 @@
   left: 0;
   width: 100%;
   height: 2px;
-  background: theme('colors.primary');
-  box-shadow: 0 0 10px theme('colors.primary');
+  background: hsl(var(--primary));
+  box-shadow: 0 0 10px hsl(var(--primary));
   animation: scan 2s linear infinite;
   opacity: 0.5;
   pointer-events: none;
@@ -83,13 +82,13 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: theme('colors.background'); 
+  background: hsl(var(--background)); 
 }
  
 ::-webkit-scrollbar-thumb {
-  background: theme('colors.muted'); 
+  background: hsl(var(--muted)); 
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: theme('colors.primary'); 
+  background: hsl(var(--primary)); 
 }
