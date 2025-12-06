@@ -28,7 +28,7 @@ if (isProduction) {
   // Production mode: Native Bun static file server
   log("Running in PRODUCTION mode (serving static files)");
 
-  const distPath = resolve(__dirname, "public");
+  const distPath = resolve(__dirname, "../dist/public");
 
   if (!existsSync(distPath)) {
     throw new Error(
