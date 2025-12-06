@@ -185,12 +185,10 @@ const parseProxies = (raw: string, typeFilter?: ProxyType | 'all'): ProxyNode[] 
         const ip = plainMatch[1];
         const port = plainMatch[2];
         const key = `${ip}:${port}`;
-        const type: ProxyType = 'unknown';
 
-        // Apply type filter - unknown type passes through if filter is 'all' or undefined
-        if (typeFilter && typeFilter !== 'all' && typeFilter !== 'unknown') {
-          continue;
-        }
+        // If a specific filter is applied (not 'all'), assume plain IPs belong to that type.
+        // Otherwise default to 'unknown' (or could default to http/socks5 if preferred, keeping unknown for now)
+        const type: ProxyType = (typeFilter && typeFilter !== 'all') ? typeFilter : 'unknown';
 
         if (!seen.has(key)) {
           seen.add(key);
