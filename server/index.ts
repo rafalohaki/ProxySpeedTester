@@ -6,8 +6,8 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Auto-detect production mode: if dist/public exists, serve static files
-const isProduction = existsSync(resolve(__dirname, "../dist/public"));
+// Auto-detect production mode: check NODE_ENV
+const isProduction = process.env.NODE_ENV === "production";
 
 export function log(message: string, source = "bun") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
