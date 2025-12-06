@@ -1,4 +1,6 @@
-import React, { useState, useEffect, useRef, memo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, memo, useCallback, useMemo } from 'react';
+import { FixedSizeList as List, ListChildComponentProps } from 'react-window';
+import AutoSizer from 'react-virtualized-auto-sizer';
 import { MOCK_PROXIES_RAW } from '@/lib/mock-proxies';
 import {
   Activity,
@@ -53,86 +55,93 @@ interface ProxyNode {
 }
 
 // Optimized Row Components to prevent unnecessary re-renders
-const LatencyRow = memo(({ proxy }: { proxy: ProxyNode }) => (
-  <div
-    className={cn(
-      "grid grid-cols-12 gap-4 p-3 border-b border-white/5 text-sm items-center hover:bg-white/5 transition-colors font-mono group",
-      proxy.status === 'ONLINE' && "text-foreground bg-primary/5",
-      proxy.status === 'TIMEOUT' && "text-muted-foreground opacity-50",
-      proxy.status === 'ERROR' && "text-destructive bg-destructive/5"
-    )}
-  >
-    <div className="col-span-1">
-      {proxy.status === 'PENDING' && <div className="w-2 h-2 rounded-full bg-yellow-500/50 animate-pulse" />}
-      {proxy.status === 'ONLINE' && <Wifi className="w-4 h-4 text-primary drop-shadow-[0_0_3px_rgba(0,255,65,0.5)]" />}
-      {proxy.status === 'TIMEOUT' && <WifiOff className="w-4 h-4" />}
-      {proxy.status === 'ERROR' && <AlertTriangle className="w-4 h-4" />}
-    </div>
-    <div className="col-span-4 md:col-span-5 tracking-wide font-medium group-hover:text-white transition-colors">{proxy.ip}</div>
-    <div className="col-span-3 md:col-span-2 text-muted-foreground">{proxy.port}</div>
-    <div className="col-span-2">
-      {proxy.latency ? (
-        <Badge variant="outline" className={cn(
-          "border-0 bg-opacity-20 font-mono",
-          proxy.latency < 100 ? "bg-primary text-primary" :
-            proxy.latency < 300 ? "bg-yellow-500 text-yellow-500" :
-              "bg-red-500 text-red-500"
-        )}>
-          {proxy.latency}ms
-        </Badge>
-      ) : (
-        <span className="text-muted-foreground text-xs">--</span>
+const LatencyRow = memo(({ data, index, style }: ListChildComponentProps<{ proxies: ProxyNode[] }>) => {
+  const proxy = data.proxies[index];
+  return (
+    <div
+      style={style}
+      className={cn(
+        "grid grid-cols-12 gap-4 p-3 border-b border-white/5 text-sm items-center hover:bg-white/5 transition-colors font-mono group",
+        proxy.status === 'ONLINE' && "text-foreground bg-primary/5",
+        proxy.status === 'TIMEOUT' && "text-muted-foreground opacity-50",
+        proxy.status === 'ERROR' && "text-destructive bg-destructive/5"
       )}
+    >
+      <div className="col-span-1">
+        {proxy.status === 'PENDING' && <div className="w-2 h-2 rounded-full bg-yellow-500/50 animate-pulse" />}
+        {proxy.status === 'ONLINE' && <Wifi className="w-4 h-4 text-primary drop-shadow-[0_0_3px_rgba(0,255,65,0.5)]" />}
+        {proxy.status === 'TIMEOUT' && <WifiOff className="w-4 h-4" />}
+        {proxy.status === 'ERROR' && <AlertTriangle className="w-4 h-4" />}
+      </div>
+      <div className="col-span-4 md:col-span-5 tracking-wide font-medium group-hover:text-white transition-colors text-ellipsis overflow-hidden">{proxy.ip}</div>
+      <div className="col-span-3 md:col-span-2 text-muted-foreground">{proxy.port}</div>
+      <div className="col-span-2">
+        {proxy.latency ? (
+          <Badge variant="outline" className={cn(
+            "border-0 bg-opacity-20 font-mono",
+            proxy.latency < 100 ? "bg-primary text-primary" :
+              proxy.latency < 300 ? "bg-yellow-500 text-yellow-500" :
+                "bg-red-500 text-red-500"
+          )}>
+            {proxy.latency}ms
+          </Badge>
+        ) : (
+          <span className="text-muted-foreground text-xs">--</span>
+        )}
+      </div>
+      <div className="col-span-2 text-xs text-muted-foreground truncate hidden md:block opacity-30">#{proxy.id.split('-')[1]}</div>
     </div>
-    <div className="col-span-2 text-xs text-muted-foreground truncate hidden md:block opacity-30">#{proxy.id.split('-')[1]}</div>
-  </div>
-));
+  )
+});
 LatencyRow.displayName = 'LatencyRow';
 
-const SpeedRow = memo(({ proxy }: { proxy: ProxyNode }) => (
-  <div className="grid grid-cols-12 gap-4 p-4 border-b border-white/5 text-sm items-center hover:bg-white/5 transition-colors">
-    <div className="col-span-4">
-      <div className="font-medium text-foreground">{proxy.ip}</div>
-      <div className="text-xs text-muted-foreground flex items-center gap-2">
-        <span className="flex items-center gap-1"><Globe className="w-3 h-3" /> PORT: {proxy.port}</span>
-        <span className="text-primary">{proxy.latency}ms</span>
+const SpeedRow = memo(({ data, index, style }: ListChildComponentProps<{ proxies: ProxyNode[] }>) => {
+  const proxy = data.proxies[index];
+  return (
+    <div style={style} className="grid grid-cols-12 gap-4 p-4 border-b border-white/5 text-sm items-center hover:bg-white/5 transition-colors">
+      <div className="col-span-4">
+        <div className="font-medium text-foreground">{proxy.ip}</div>
+        <div className="text-xs text-muted-foreground flex items-center gap-2">
+          <span className="flex items-center gap-1"><Globe className="w-3 h-3" /> PORT: {proxy.port}</span>
+          <span className="text-primary">{proxy.latency}ms</span>
+        </div>
       </div>
-    </div>
-    <div className="col-span-4">
-      <div className="flex justify-between text-[10px] mb-1 text-muted-foreground">
-        <span>{proxy.speedTest?.status === 'TESTING' ? 'DOWNLOADING...' : 'OVH_100MB.bin'}</span>
-        <span>{proxy.speedTest?.progress.toFixed(0)}%</span>
+      <div className="col-span-4">
+        <div className="flex justify-between text-[10px] mb-1 text-muted-foreground">
+          <span>{proxy.speedTest?.status === 'TESTING' ? 'DOWNLOADING...' : 'OVH_100MB.bin'}</span>
+          <span>{proxy.speedTest?.progress.toFixed(0)}%</span>
+        </div>
+        <Progress
+          value={proxy.speedTest?.progress}
+          className="h-1.5 bg-secondary/10"
+          indicatorClassName={cn(
+            "bg-secondary shadow-[0_0_5px_theme('colors.secondary')]",
+            proxy.speedTest?.status === 'COMPLETED' && "bg-primary shadow-[0_0_5px_theme('colors.primary')]"
+          )}
+        />
       </div>
-      <Progress
-        value={proxy.speedTest?.progress}
-        className="h-1.5 bg-secondary/10"
-        indicatorClassName={cn(
-          "bg-secondary shadow-[0_0_5px_theme('colors.secondary')]",
-          proxy.speedTest?.status === 'COMPLETED' && "bg-primary shadow-[0_0_5px_theme('colors.primary')]"
+      <div className="col-span-2 font-mono text-right">
+        {proxy.speedTest?.downloadSpeed ? (
+          <span className={cn(
+            "font-bold",
+            proxy.speedTest.downloadSpeed > 10 ? "text-primary" :
+              proxy.speedTest.downloadSpeed > 2 ? "text-secondary" : "text-yellow-500"
+          )}>
+            {proxy.speedTest.downloadSpeed.toFixed(1)} MB/s
+          </span>
+        ) : (
+          <span className="text-muted-foreground">-</span>
         )}
-      />
+      </div>
+      <div className="col-span-2 flex justify-end">
+        {proxy.speedTest?.status === 'COMPLETED' && <Badge variant="default" className="bg-primary text-black">DONE</Badge>}
+        {proxy.speedTest?.status === 'TESTING' && <Badge variant="outline" className="text-secondary border-secondary animate-pulse">TESTING</Badge>}
+        {proxy.speedTest?.status === 'IDLE' && <Badge variant="secondary" className="opacity-50">READY</Badge>}
+        {proxy.speedTest?.status === 'FAILED' && <Badge variant="destructive">FAILED</Badge>}
+      </div>
     </div>
-    <div className="col-span-2 font-mono text-right">
-      {proxy.speedTest?.downloadSpeed ? (
-        <span className={cn(
-          "font-bold",
-          proxy.speedTest.downloadSpeed > 10 ? "text-primary" :
-            proxy.speedTest.downloadSpeed > 2 ? "text-secondary" : "text-yellow-500"
-        )}>
-          {proxy.speedTest.downloadSpeed.toFixed(1)} MB/s
-        </span>
-      ) : (
-        <span className="text-muted-foreground">-</span>
-      )}
-    </div>
-    <div className="col-span-2 flex justify-end">
-      {proxy.speedTest?.status === 'COMPLETED' && <Badge variant="default" className="bg-primary text-black">DONE</Badge>}
-      {proxy.speedTest?.status === 'TESTING' && <Badge variant="outline" className="text-secondary border-secondary animate-pulse">TESTING</Badge>}
-      {proxy.speedTest?.status === 'IDLE' && <Badge variant="secondary" className="opacity-50">READY</Badge>}
-      {proxy.speedTest?.status === 'FAILED' && <Badge variant="destructive">FAILED</Badge>}
-    </div>
-  </div>
-));
+  )
+});
 SpeedRow.displayName = 'SpeedRow';
 
 const parseProxies = (raw: string, typeFilter?: ProxyType | 'all'): ProxyNode[] => {
@@ -393,7 +402,21 @@ export function ProxyTester() {
       speedTest: { ...p.speedTest!, status: p.status === 'ONLINE' ? 'IDLE' : 'FAILED', progress: 0, downloadSpeed: 0 }
     })));
 
-    const batchSize = Math.max(1, Math.floor(concurrency[0] / 2)); // Speed tests are heavier
+    const batchSize = Math.max(1, Math.floor(concurrency[0] / 2));
+    const updatesRef = new Map<string, ProxyNode>();
+
+    // Start UI Sync Loop
+    const syncInterval = setInterval(() => {
+      if (updatesRef.size > 0) {
+        const updates = new Map(updatesRef);
+        updatesRef.clear();
+        setProxies(prev => prev.map(p => {
+          const update = updates.get(p.id);
+          // Merge update carefully if needed, or replacement is fine if we update full object
+          return update ? { ...p, ...update } : p;
+        }));
+      }
+    }, 100);
 
     try {
       for (let i = 0; i < onlineProxies.length; i += batchSize) {
@@ -401,7 +424,7 @@ export function ProxyTester() {
 
         const chunk = onlineProxies.slice(i, i + batchSize);
 
-        // Set chunk to TESTING state
+        // Set chunk to TESTING state immediately
         setProxies(prev => {
           const chunkIds = new Set(chunk.map(c => c.id));
           return prev.map(p =>
@@ -412,45 +435,46 @@ export function ProxyTester() {
         await Promise.all(chunk.map(async (proxy) => {
           if (signal.aborted) return;
 
-          // Simulate download progress
           let progress = 0;
-          const targetSpeed = Math.random() * 15 + 0.5; // Random speed 0.5 - 15 MB/s
+          const targetSpeed = Math.random() * 15 + 0.5;
+          let currentProxyState = { ...proxy, speedTest: { ...proxy.speedTest!, status: 'TESTING' } } as ProxyNode;
 
           while (progress < 100) {
             if (signal.aborted || !isMounted.current) break;
 
             await new Promise(r => setTimeout(r, 200));
-            // Larger chunks for less re-renders
             progress += Math.random() * 15 + 5;
             if (progress > 100) progress = 100;
 
-            // Update progress individually (it's okay for smoothness here, but could be optimized)
-            if (isMounted.current && !signal.aborted) {
-              setProxies(prev => prev.map(p =>
-                p.id === proxy.id ? {
-                  ...p,
-                  speedTest: {
-                    ...p.speedTest!,
-                    progress,
-                    downloadSpeed: targetSpeed + (Math.random() * 2 - 1) // Jitter
-                  }
-                } : p
-              ));
-            }
+            // Queue update
+            currentProxyState = {
+              ...currentProxyState,
+              speedTest: {
+                ...currentProxyState.speedTest!,
+                progress,
+                downloadSpeed: targetSpeed + (Math.random() * 2 - 1)
+              }
+            };
+            updatesRef.set(proxy.id, currentProxyState);
           }
 
           if (isMounted.current && !signal.aborted) {
-            setProxies(prev => prev.map(p =>
-              p.id === proxy.id ? {
-                ...p,
-                speedTest: { ...p.speedTest!, status: 'COMPLETED', progress: 100, downloadSpeed: targetSpeed }
-              } : p
-            ));
+            currentProxyState = {
+              ...currentProxyState,
+              speedTest: { ...currentProxyState.speedTest!, status: 'COMPLETED', progress: 100, downloadSpeed: targetSpeed }
+            };
+            updatesRef.set(proxy.id, currentProxyState);
           }
         }));
       }
 
       if (isMounted.current && !signal.aborted) {
+        // Final sync
+        if (updatesRef.size > 0) {
+          const updates = new Map(updatesRef);
+          updatesRef.clear();
+          setProxies(prev => prev.map(p => updates.get(p.id) || p));
+        }
         setIsSpeedTesting(false);
         addLog('Speed test complete.');
       }
@@ -458,8 +482,10 @@ export function ProxyTester() {
       console.error("Speed test error", error);
       if (isMounted.current) setIsSpeedTesting(false);
     } finally {
+      clearInterval(syncInterval);
       abortController.current = null;
     }
+
   }, [proxies, isSpeedTesting, concurrency, addLog]);
 
   const deduplicateProxies = (currentProxies: ProxyNode[], newProxies: ProxyNode[]) => {
@@ -587,15 +613,19 @@ export function ProxyTester() {
   const errorCount = proxies.filter(p => p.status === 'ERROR').length;
   const avgLatency = proxies.filter(p => p.status === 'ONLINE' && p.latency).reduce((acc, curr) => acc + (curr.latency || 0), 0) / (onlineCount || 1);
 
-  const sortedProxies = [...proxies].sort((a, b) => {
-    if (a.status === 'ONLINE' && b.status !== 'ONLINE') return -1;
-    if (a.status !== 'ONLINE' && b.status === 'ONLINE') return 1;
-    return (a.latency || 0) - (b.latency || 0);
-  });
+  const sortedProxies = useMemo(() => {
+    return [...proxies].sort((a, b) => {
+      if (a.status === 'ONLINE' && b.status !== 'ONLINE') return -1;
+      if (a.status !== 'ONLINE' && b.status === 'ONLINE') return 1;
+      return (a.latency || 0) - (b.latency || 0);
+    });
+  }, [proxies]);
 
-  const speedTestProxies = [...proxies].filter(p => p.status === 'ONLINE').sort((a, b) =>
-    (b.speedTest?.downloadSpeed || 0) - (a.speedTest?.downloadSpeed || 0)
-  );
+  const speedTestProxies = useMemo(() => {
+    return [...proxies]
+      .filter(p => p.status === 'ONLINE')
+      .sort((a, b) => (b.speedTest?.downloadSpeed || 0) - (a.speedTest?.downloadSpeed || 0));
+  }, [proxies]);
 
   return (
     <div className="min-h-screen bg-background text-foreground p-4 md:p-6 font-mono relative overflow-hidden flex flex-col">
@@ -840,15 +870,26 @@ export function ProxyTester() {
                   <div className="col-span-2">Latency</div>
                   <div className="col-span-2 hidden md:block">ID</div>
                 </div>
-                <div className="flex-1 overflow-y-auto custom-scrollbar">
-                  {sortedProxies.map((proxy) => (
-                    <LatencyRow key={proxy.id} proxy={proxy} />
-                  ))}
-                  {sortedProxies.length === 0 && (
-                    <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+                <div className="flex-1 min-h-0">
+                  {sortedProxies.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
                       <Activity className="w-12 h-12 mb-4 opacity-20" />
                       <p>NO TARGETS LOADED</p>
                     </div>
+                  ) : (
+                    <AutoSizer>
+                      {({ height, width }: { height: number; width: number }) => (
+                        <List
+                          height={height}
+                          width={width}
+                          itemCount={sortedProxies.length}
+                          itemSize={46}
+                          itemData={{ proxies: sortedProxies }}
+                        >
+                          {LatencyRow}
+                        </List>
+                      )}
+                    </AutoSizer>
                   )}
                 </div>
               </Card>
@@ -862,8 +903,8 @@ export function ProxyTester() {
                   <div className="col-span-2">Speed</div>
                   <div className="col-span-2">Status</div>
                 </div>
-                <div className="flex-1 overflow-y-auto custom-scrollbar">
-                  {speedTestProxies.length === 0 && (
+                <div className="flex-1 min-h-0">
+                  {speedTestProxies.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full text-muted-foreground space-y-4">
                       <div className="p-6 rounded-full bg-white/5 border border-white/10">
                         <Gauge className="w-12 h-12 opacity-20" />
@@ -873,11 +914,21 @@ export function ProxyTester() {
                         RETURN TO SCANNER
                       </Button>
                     </div>
+                  ) : (
+                    <AutoSizer>
+                      {({ height, width }: { height: number; width: number }) => (
+                        <List
+                          height={height}
+                          width={width}
+                          itemCount={speedTestProxies.length}
+                          itemSize={65}
+                          itemData={{ proxies: speedTestProxies }}
+                        >
+                          {SpeedRow}
+                        </List>
+                      )}
+                    </AutoSizer>
                   )}
-
-                  {speedTestProxies.map((proxy) => (
-                    <SpeedRow key={proxy.id} proxy={proxy} />
-                  ))}
                 </div>
               </Card>
             </TabsContent>

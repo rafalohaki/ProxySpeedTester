@@ -1,75 +1,45 @@
-import { build as esbuild } from "esbuild";
 import { build as viteBuild } from "vite";
 import { rm, readFile } from "fs/promises";
-
-// server deps to bundle to reduce openat(2) syscalls
-// which helps cold start times
-const allowlist = [
-  "@google/generative-ai",
-  "@neondatabase/serverless",
-  "axios",
-  "connect-pg-simple",
-  "cors",
-  "date-fns",
-  "drizzle-orm",
-  "drizzle-zod",
-  "express",
-  "express-rate-limit",
-  "express-session",
-  "jsonwebtoken",
-  "memorystore",
-  "multer",
-  "nanoid",
-  "nodemailer",
-  "openai",
-  "passport",
-  "passport-local",
-  "stripe",
-  "uuid",
-  "ws",
-  "xlsx",
-  "zod",
-  "zod-validation-error",
-];
 
 async function buildAll() {
   await rm("dist", { recursive: true, force: true });
 
-  console.log("building client...");
+  console.log("🏗️  Building client with Vite...");
   await viteBuild();
 
-  console.log("building server...");
-  const pkg = JSON.parse(await readFile("package.json", "utf-8"));
-  const allDeps = [
-    ...Object.keys(pkg.dependencies || {}),
-    ...Object.keys(pkg.devDependencies || {}),
-  ];
-  const externals = allDeps.filter((dep) => !allowlist.includes(dep));
+  console.log("🏗️  Building server with Bun...");
 
-  await esbuild({
-    entryPoints: ["server/index.ts"],
-    platform: "node",
-    target: "node20",
-    bundle: true,
+  // Use Bun's native bundler
+  const result = await Bun.build({
+    entrypoints: ["./server/index.ts"],
+    outdir: "./dist",
+    target: "bun",
     format: "esm",
-    outfile: "dist/index.mjs",
-    banner: {
-      js: `
-import { createRequire as __createRequire } from 'module';
-import { fileURLToPath as __fileURLToPath } from 'url';
-import { dirname as __pathDirname } from 'path';
-const require = __createRequire(import.meta.url);
-const __filename = __fileURLToPath(import.meta.url);
-const __dirname = __pathDirname(__filename);
-`.trim(),
-    },
+    minify: true,
+    splitting: false,
+    sourcemap: "external",
+    naming: "[name].mjs",
+    external: [
+      // Keep external packages that need native bindings
+      "bufferutil",
+      "utf-8-validate",
+    ],
     define: {
       "process.env.NODE_ENV": '"production"',
     },
-    minify: true,
-    external: externals,
-    logLevel: "info",
   });
+
+  if (!result.success) {
+    console.error("Build failed:");
+    for (const log of result.logs) {
+      console.error(log);
+    }
+    process.exit(1);
+  }
+
+  console.log("✅ Build complete!");
+  console.log("   - Client: dist/public/");
+  console.log("   - Server: dist/index.mjs");
 }
 
 buildAll().catch((err) => {
