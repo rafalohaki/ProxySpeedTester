@@ -8,6 +8,7 @@
     "build": "bun run script/build.ts",
     "start": "bun run dist/index.mjs",
     "check": "bunx tsc --noEmit",
+    "test": "bun test",
     "preview": "bun run start"
   },
   "dependencies": {
