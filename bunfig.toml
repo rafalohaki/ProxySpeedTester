@@ -3,9 +3,12 @@
 exact = true
 
 [run]
-# Enable hot reloading
+# Enable hot reloading during development
 hot = true
 
 [build]
-# Target Bun runtime
+# Target Bun runtime for production builds
 target = "bun"
+
+# Optimize for speed
+minify = true
