@@ -2,7 +2,7 @@ import { existsSync } from "fs";
 import { resolve } from "path";
 
 // Auto-detect production mode: check NODE_ENV
-const isProduction = Bun.env.NODE_ENV === "production";
+const isProduction = process.env.NODE_ENV === "production";
 
 export function log(message: string, source = "bun") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {

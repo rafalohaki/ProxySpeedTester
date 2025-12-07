@@ -35,7 +35,6 @@ export default defineConfig({
       "react-dom",
       "react-window",
       "react-virtualized-auto-sizer",
-      "framer-motion",
     ],
   },
 });

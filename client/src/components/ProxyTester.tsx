@@ -115,8 +115,9 @@ const SpeedRow = memo(({ data, index, style }: ListChildComponentProps<{ proxies
           value={proxy.speedTest?.progress}
           className="h-1.5 bg-secondary/10"
           indicatorClassName={cn(
-            "bg-secondary shadow-[0_0_5px_theme('colors.secondary')]",
-            proxy.speedTest?.status === 'COMPLETED' && "bg-primary shadow-[0_0_5px_theme('colors.primary')]"
+            "bg-secondary shadow-[0_0_5px_hsl(var(--secondary))]",
+            proxy.speedTest?.status === 'COMPLETED' && "bg-primary shadow-[0_0_5px_hsl(var(--primary))]",
+            proxy.speedTest?.status === 'FAILED' && "bg-destructive shadow-[0_0_5px_hsl(var(--destructive))]"
           )}
         />
       </div>
@@ -856,7 +857,7 @@ export function ProxyTester() {
                 <Progress
                   value={progress}
                   className="h-2 bg-secondary/10"
-                  indicatorClassName="bg-secondary shadow-[0_0_10px_theme('colors.secondary')]"
+                  indicatorClassName="bg-secondary shadow-[0_0_10px_hsl(var(--secondary))]"
                 />
               </div>
             </div>
